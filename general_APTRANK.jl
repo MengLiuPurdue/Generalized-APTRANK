@@ -1,6 +1,8 @@
 # Generalized APTRANK
 # Input:
 # ei, ej       - an edge list
+# m, n         - the number of rows and edges of the original data set (to ensure
+#                the reconstructed matrix has the same dimension of the original one)
 # train_rows   - the row positions of training data
 # train_cols   - the column positions of training data
 # predict_rows - the row positions where you want predictions
@@ -26,12 +28,12 @@ using StatsBase
 include("splitRT.jl")
 include("manage_procs.jl")
 
-function general_APTRANK(ei,ej,train_rows,train_cols,predict_rows,predict_cols;
+function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_cols;
                          K = 8,S = 5,diff_type = 1,ratio = 0.8,rho = 0.0)
 
   nrows = length(predict_rows)
   ncols = length(predict_cols)
-  G = sparse(ei,ej,1)
+  G = sparse(ei,ej,1,m,n)
   G = round(Int64,G)
   np = nprocs()
   if np < 12
@@ -42,6 +44,9 @@ function general_APTRANK(ei,ej,train_rows,train_cols,predict_rows,predict_cols;
   for s = 1:S
     @show s
     Gf,Gv = splitRT(G,ratio)
+    #@show length(train_rows)
+    #@show size(Gf)
+    #@show size(G)
     Rf = Gf[train_rows,train_cols]
     Rv = Gv[predict_rows,predict_cols]
     Gf,Gv = 0,0
@@ -87,7 +92,7 @@ function general_APTRANK(ei,ej,train_rows,train_cols,predict_rows,predict_cols;
         @time Xh[:,all_ranges[i]] = Xi[predict_rows,:]
       end
       ii,jj,vv = findnz(Xh)
-      #@show sum(isnan(vv))
+      @show sum(isnan(vv))
       rowids = ii + (jj - 1)*(Xh.m)
       A[rowids,k] = vv
       Xh = 0
@@ -185,7 +190,7 @@ function get_diff_matrix(G,diff_type,rho)
     end
     F = L / rho
   elseif diff_type == 4
-    F = Droot * L * Droot
+    F = speye(size(G,1)) - Droot * G * Droot
   else
     error("unknown diffusion type")
   end
