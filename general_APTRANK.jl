@@ -35,12 +35,16 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
   ncols = length(predict_cols)
   G = sparse(ei,ej,1,m,n)
   G = round(Int64,G)
+  if !issymmetric(G)
+    error("The input must be symmetric.")
+  end
+  print("symmetric check success!\n")
   np = nprocs()
   if np < 12
     addprocs(12-np)
   end
   np = nprocs()
-  all_alpha = zeros(Float64,K,S)
+  all_alpha = zeros(Float64,K-1,S)
   for s = 1:S
     @show s
     Gf,Gv = splitRT(G,ratio)
@@ -77,13 +81,13 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
       t =  X0[:,all_ranges[i]]
       sendto(i,X = t)
     end
-    A = zeros(Float64,nrows*ncols,K)
+    A = zeros(Float64,nrows*ncols,K-1)
     #@show "start"
     for k = 1:K
       @show k
       #@show size(X),size(F)
       @time @everywhere X = F * X
-      #k == 1 && continue
+      k == 1 && continue
       Xh = spzeros(Rv.m,Rv.n)
       for i = 1:np
         Xi = getfrom(i,:X)
@@ -94,7 +98,7 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
       ii,jj,vv = findnz(Xh)
       @show sum(isnan(vv))
       rowids = ii + (jj - 1)*(Xh.m)
-      A[rowids,k] = vv
+      A[rowids,k-1] = vv
       Xh = 0
       gc()
     end
@@ -106,8 +110,8 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
     gc()
     b = reshape(Rv,prod(size(Rv)),1)
     alpha = Variable(size(Ra,2))
-    print("start solving Least Sqaure\n")
-    #@show Ra
+    @show "start LS"
+    @show Ra
     #@show findnz(Ra)
     #@show findnz(Qa'*b)
     problem = minimize(norm(Qa'*b - Ra*alpha),alpha >= 0, sum(alpha) == 1)
@@ -135,13 +139,13 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
     t =  X0[:,all_ranges[i]]
     sendto(i,X = t)
   end
-  A = zeros(Float64,nrows*ncols,K)
+  A = zeros(Float64,nrows*ncols,K-1)
   #@show "start"
   for k = 1:K
     @show k
     #@show size(X),size(F)
     @time @everywhere X = F * X
-    #k == 1 && continue
+    k == 1 && continue
     Xh = spzeros(nrows,ncols)
     for i = 1:np
       Xi = getfrom(i,:X)
@@ -150,20 +154,21 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
     ii,jj,vv = findnz(Xh)
     #@show sum(isnan(vv))
     rowids = ii + (jj - 1)*(nrows)
-    A[rowids,k] = vv
+    A[rowids,k-1] = vv
     Xh = 0
     gc()
   end
   Xa = A * alpha
   #@show "reshape"
   Xa = reshape(Xa,nrows,ncols)
+  @show alpha
 
   return Xa
 end
 
 function get_diff_matrix(G,diff_type,rho)
   #@show issymmetric(G)
-  d = vec(sum(G,1))
+  d = vec(sum(G,2))
   #@show maximum(d),minimum(d)
   dinv = 1./d
   for i = 1:length(dinv)
@@ -180,6 +185,7 @@ function get_diff_matrix(G,diff_type,rho)
   if diff_type == 1
     if rho <= 0
       rho = maximum(abs(eigs(sparse(G),which = :LM, ritzvec = false)[1]))
+      @show rho
     end
     F = G / rho
   elseif diff_type == 2
@@ -187,10 +193,11 @@ function get_diff_matrix(G,diff_type,rho)
   elseif diff_type == 3
     if rho <= 0
       rho = maximum(abs(eigs(sparse(L),which = :LM, ritzvec = false)[1]))
+      @show rho
     end
     F = L / rho
   elseif diff_type == 4
-    F = speye(size(G,1)) - Droot * G * Droot
+    F = 0.5*(speye(size(G,1)) - Droot * G * Droot)
   else
     error("unknown diffusion type")
   end
