@@ -81,6 +81,8 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
       t =  X0[:,all_ranges[i]]
       sendto(i,X = t)
     end
+    X0 = 0
+    gc()
     A = zeros(Float64,nrows*ncols,K-1)
     #@show "start"
     for k = 1:K
@@ -94,6 +96,8 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
         #@show size(Xh[:,all_ranges[i]])
         #@show size(Xi[predict_rows,:])
         @time Xh[:,all_ranges[i]] = Xi[predict_rows,:]
+        Xi = 0
+        gc()
       end
       ii,jj,vv = findnz(Xh)
       @show sum(isnan(vv))
@@ -105,18 +109,24 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
     #@show size(A)
     #@show sum(isnan(A))
     #@show findnz(A)
+    X = 0
+    gc()
     Qa,Ra = qr(A)
     A = 0
     gc()
     b = reshape(Rv,prod(size(Rv)),1)
     alpha = Variable(size(Ra,2))
-    @show "start LS"
+    print("start solving Least Sqaure\n")
     @show Ra
     #@show findnz(Ra)
     #@show findnz(Qa'*b)
     problem = minimize(norm(Qa'*b - Ra*alpha),alpha >= 0, sum(alpha) == 1)
     #solve!(problem, GurobiSolver())
     solve!(problem)
+    Qa = 0
+    Ra = 0
+    b = 0
+    gc()
     all_alpha[:,s] = alpha.value
   end
   alpha = mean(all_alpha,2)
@@ -139,6 +149,8 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
     t =  X0[:,all_ranges[i]]
     sendto(i,X = t)
   end
+  X0 = 0
+  gc()
   A = zeros(Float64,nrows*ncols,K-1)
   #@show "start"
   for k = 1:K
@@ -150,6 +162,8 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
     for i = 1:np
       Xi = getfrom(i,:X)
       @time Xh[:,all_ranges[i]] = Xi[predict_rows,:]
+      Xi = 0
+      gc()
     end
     ii,jj,vv = findnz(Xh)
     #@show sum(isnan(vv))
@@ -163,7 +177,7 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
   Xa = reshape(Xa,nrows,ncols)
   @show alpha
 
-  return Xa
+  return Xa,alpha
 end
 
 function get_diff_matrix(G,diff_type,rho)
