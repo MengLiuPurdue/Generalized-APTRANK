@@ -127,6 +127,7 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
     Ra = 0
     b = 0
     gc()
+    @eval @everywhere gc()
     all_alpha[:,s] = alpha.value
   end
   alpha = mean(all_alpha,2)
