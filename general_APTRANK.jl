@@ -24,6 +24,7 @@
 
 using Convex
 using SCS
+using ECOS
 using StatsBase
 include("splitRT.jl")
 include("manage_procs.jl")
@@ -122,7 +123,7 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
     #@show findnz(Qa'*b)
     problem = minimize(norm(Qa'*b - Ra*alpha),alpha >= 0, sum(alpha) == 1)
     #solve!(problem, GurobiSolver())
-    solve!(problem)
+    solve!(problem,ECOSSolver())
     Qa = 0
     Ra = 0
     b = 0
