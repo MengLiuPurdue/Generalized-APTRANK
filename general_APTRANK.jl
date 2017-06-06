@@ -65,7 +65,7 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
     @eval @everywhere F = $F
     newG = 0
     gc()
-    X0 = spzeros(G.m,ncols)
+    X0 = zeros(G.m,ncols)
     for i = 1:ncols
       X0[predict_cols[i],i] = 1
     end
@@ -102,7 +102,7 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
       end
       ii,jj,vv = findnz(Xh)
       @show sum(isnan(vv))
-      rowids = ii + (jj - 1)*(Xh.m)
+      rowids = ii + (jj - 1)*(nrows)
       A[rowids,k-1] = vv
       Xh = 0
       gc()
@@ -134,7 +134,7 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
   alpha = alpha / sum(alpha)
   F = get_diff_matrix(G,diff_type,rho)
   @eval @everywhere F = $F
-  X0 = spzeros(G.m,ncols)
+  X0 = zeros(G.m,ncols)
   for i = 1:ncols
     X0[predict_cols[i],i] = 1
   end
@@ -159,7 +159,7 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
     #@show size(X),size(F)
     @time @everywhere X = F * X
     k == 1 && continue
-    Xh = spzeros(nrows,ncols)
+    Xh = zeros(nrows,ncols)
     for i = 1:np
       Xi = getfrom(i,:X)
       @time Xh[:,all_ranges[i]] = Xi[predict_rows,:]
