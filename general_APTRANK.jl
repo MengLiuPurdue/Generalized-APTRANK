@@ -153,10 +153,8 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
   X0 = 0
   gc()
   A = zeros(Float64,nrows*ncols,K-1)
-  #@show "start"
   for k = 1:K
     @show k
-    #@show size(X),size(F)
     @time @everywhere X = F * X
     k == 1 && continue
     Xh = zeros(nrows,ncols)
