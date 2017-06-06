@@ -91,7 +91,7 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
       #@show size(X),size(F)
       @time @everywhere X = F * X
       k == 1 && continue
-      Xh = spzeros(Rv.m,Rv.n)
+      Xh = zeros(Rv.m,Rv.n)
       for i = 1:np
         Xi = getfrom(i,:X)
         #@show size(Xh[:,all_ranges[i]])
