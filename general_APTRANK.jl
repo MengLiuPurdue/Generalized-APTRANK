@@ -17,7 +17,8 @@
 # ratio        - the split ratio between fiiting set and validation set, default is 0.8
 # rho          - a parameter used to control the diffusion process, rho > 0, if a
 #                rho <= 0 is given, it will be replaced by the spectral radius
-# seeds        - seed positions, where the diffusion starts, default is the same as
+# seeds        - seed positions, where the diffusion starts, default is the same as predict_cols
+# sampling_type- 1 for randomly sampling using ratio, 2 for S-fold cross validation, default is 1
 #
 #
 # Output:
