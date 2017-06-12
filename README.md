@@ -6,7 +6,7 @@ This is a generalized APTRANK based on [Jiang, Biaobin, et al. "AptRank: An Adap
 * Input:
 * ei, ej       - an edge list
 * m, n         - the number of rows and edges of the original data set (to ensure
-*                the reconstructed matrix has the same dimension of the original one)
+               the reconstructed matrix has the same dimension of the original one)
 * train_rows   - the row positions of training data, represented in a tuple of arrays
 * train_cols   - the column positions of training data, represented in a tuple of arrays
 * predict_rows - the row positions where you want predictions
