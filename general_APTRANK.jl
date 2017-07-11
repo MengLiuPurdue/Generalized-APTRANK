@@ -33,153 +33,88 @@ using StatsBase
 using MLBase
 include("splitRT.jl")
 include("manage_procs.jl")
+include("colnormout.jl")
 
-function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_cols;
-                         K = 8,S = 5,diff_type = 1,ratio = 0.8,rho = 0.0,seeds = predict_cols,
-                         sampling_type = 1)
+function general_APTRANK(ei,ej,v,m,n,train_rows,train_cols,predict_rows,predict_cols;
+                         K = 8,S = 5,diff_type = 1,ratio = 0.8,rho = 0.0,sampling_type = 1,
+                         second_run = 0,lower_bound = 0.0,method = "mean")
 
   nrows = length(predict_rows)
   ncols = length(predict_cols)
-  G = sparse(ei,ej,1,m,n)
-  G = round(Int64,G)
-  if !issymmetric(G)
-    error("The input must be symmetric.")
+  G = sparse(ei,ej,v,m,n)
+  #if !issymmetric(G)
+    #error("The input must be symmetric.")
+  #end
+  #print("symmetric check success!\n")
+  if lower_bound > 1/(K-1)
+    error("lower bound can't be larger than 1/(K-1).")
   end
-  print("symmetric check success!\n")
   np = nprocs()
   if np < 12
     addprocs(12-np)
   end
   np = nprocs()
-  all_alpha = zeros(Float64,K-1,S)
-  if sampling_type == 2
-    print("start sampling S-fold cross validation\n")
-    folds = Array{Vector{Any}}(length(train_rows))
-    for i = 1:length(train_rows)
-      nr = length(train_rows[i])
-      nc = length(train_cols[i])
-      @time folds[i] = collect(Kfold(nr*nc,S))
-    end
+  which_run = 1
+  col_seeds,row_seeds = [],[]
+  for i = 1:length(train_rows)
+    col_seeds = vcat(col_seeds,train_cols[i])
+    row_seeds = vcat(row_seeds,train_rows[i])
   end
-  for s = 1:S
-    b = []
-    positions = Array(Array{Int64},length(train_rows))
-    Gf = copy(G)
-    if sampling_type == 1
-      for i = 1:length(train_rows)
-        nr = length(train_rows[i])
-        nc = length(train_cols[i])
-        set = round(Int64,linspace(1,nr*nc,nr*nc))
-        pf = sample(set,round(Int64,ratio*nr*nc),replace = false)
-        pv = setdiff(set,pf)
-        training = G[train_rows[i],train_cols[i]] + 1
-        ii,jj,vv = findnz(training)
-        Rf = sparse(ii[pf],jj[pf],vv[pf]-1,nr,nc)
-        Gf[train_rows[i],train_cols[i]] = Rf
-        b = vcat(b,vv[pv]-1)
-        positions[i] = pv
-      end
-    elseif sampling_type == 2
-      print("extract a new fold.\n")
-      for i = 1:length(train_rows)
-        nr = length(train_rows[i])
-        nc = length(train_cols[i])
-        set = round(Int64,linspace(1,nr*nc,nr*nc))
-        pf = set[folds[i][s]]
-        pv = setdiff(set,pf)
-        training = G[train_rows[i],train_cols[i]] + 1
-        ii,jj,vv = findnz(training)
-        Rf = sparse(ii[pf],jj[pf],vv[pf]-1,nr,nc)
-        Gf[train_rows[i],train_cols[i]] = Rf
-        b = vcat(b,vv[pv]-1)
-        positions[i] = pv
-      end
+  col_seeds = unique(col_seeds)
+  row_seeds = unique(row_seeds)
+  if length(col_seeds) < length(row_seeds)
+    seeds = col_seeds
+    rev_flag = true
+  else
+    seeds = row_seeds
+    rev_flag = false
+  end
+  seeds = Vector{Int64}(seeds)
+  all_alpha = start_diffusion(np,G,train_rows,train_cols,predict_rows,predict_cols,
+                               K,S,diff_type,ratio,rho,seeds,sampling_type,which_run,
+                               0,0,lower_bound,rev_flag)
+  all_alpha = Array{Float64}(all_alpha)
+  if method == "mean"
+    alpha = mean(all_alpha,2)
+  elseif method == "median"
+    alpha = median(all_alpha,2)
+    alpha /= sum(alpha)
+  else
+    error("Please specify which method to use, median or mean.")
+  end
+  if second_run != 0
+    (max_num,max_pos) = findmax(alpha)
+    max_num = max_num / 2
+    which_run = 2
+    all_alpha = start_diffusion(np,G,train_rows,train_cols,predict_rows,predict_cols,
+                                 K,S,diff_type,ratio,rho,seeds,sampling_type,which_run,
+                                 max_num,max_pos,lower_bound,rev_flag)
+    all_alpha = Array{Float64}(all_alpha)
+    if method == "mean"
+      alpha = mean(all_alpha,2)
+    elseif method == "median"
+      alpha = median(all_alpha,2)
+      alpha /= sum(alpha)
     else
-      error("Invalid sampling type!")
+      error("Please specify which method to use, median or mean.")
     end
-    @show s
-    F = get_diff_matrix(Gf,diff_type,rho)
-    @eval @everywhere F = $F
-    Gf = 0
-    gc()
-    X0 = spzeros(G.m,G.n)
-    for i = 1:length(seeds)
-      X0[seeds[i],seeds[i]] = 1
-    end
-    N = length(seeds)
-    bs = ceil(Int64,N/np)
-    nblocks = ceil(Int64,N/bs)
-
-    all_ranges = Array(Array{Int64},nblocks)
-    for i = 1:nblocks
-      start = 1 + (i-1)*bs
-      all_ranges[i] = seeds[start:min(start+bs-1,N)]
-    end
-    for i = 1:np
-      t =  X0[:,all_ranges[i]]
-      sendto(i,X = t)
-    end
-    X0 = 0
-    gc()
-    Arows = zeros(Int64,length(train_rows)+1)
-    for i = 2:(length(train_rows)+1)
-      Arows[i] = Arows[i - 1] + length(positions[i - 1])
-    end
-    A = zeros(Float64,Arows[length(Arows)],K-1)
-    #@show "start"
-    for k = 1:K
-      @show k
-      #@show size(X),size(F)
-      @time @everywhere X = F * X
-      k == 1 && continue
-      Xh = zeros(G.m,G.n)
-      for i = 1:np
-        Xi = getfrom(i,:X)
-        #@show size(Xh[:,all_ranges[i]])
-        #@show size(Xi[predict_rows,:])
-        @time Xh[:,all_ranges[i]] = Xi
-        Xi = 0
-        gc()
-      end
-      for i = 1:length(train_rows)
-        validating = Xh[train_rows[i],train_cols[i]]
-        validating = validating[:]
-        A[(Arows[i]+1):(Arows[i+1]),k-1] = validating[positions[i]]
-      end
-      Xh = 0
-      gc()
-    end
-    #@show size(A)
-    #@show sum(isnan(A))
-    #@show findnz(A)
-    @eval @everywhere X,F = 0,0
-    @everywhere gc()
-    Qa,Ra = qr(A)
-    A = 0
-    gc()
-    alpha = Variable(size(Ra,2))
-    print("start solving Least Sqaure\n")
-    @show Ra
-    #@show findnz(Ra)
-    #@show findnz(Qa'*b)
-    problem = minimize(norm(Qa'*b - Ra*alpha),alpha >= 0, sum(alpha) == 1)
-    #solve!(problem, GurobiSolver())
-    solve!(problem,ECOSSolver())
-    Qa = 0
-    Ra = 0
-    b = 0
-    gc()
-    all_alpha[:,s] = alpha.value
-    @show alpha.value
   end
-  alpha = mean(all_alpha,2)
-  alpha = alpha / sum(alpha)
   F = get_diff_matrix(G,diff_type,rho)
-  @eval @everywhere F = $F
-  X0 = zeros(G.m,G.n)
-  for i = 1:length(seeds)
-    X0[seeds[i],seeds[i]] = 1
+  Ft = F'
+  @eval @everywhere Ft = $Ft
+  if length(predict_rows) < length(predict_cols)
+    seeds = predict_rows
+    rev_flag = false
+  else
+    seeds = predict_cols
+    rev_flag = true
   end
+  seeds = Vector{Int64}(seeds)
+  X0 = sparse(seeds,seeds,1.0,G.m,G.n)
+  X0 = full(X0)
+  X0t = X0'
+  X0 = 0
+  gc()
   N = length(seeds)
   bs = ceil(Int64,N/np)
   nblocks = ceil(Int64,N/bs)
@@ -190,32 +125,37 @@ function general_APTRANK(ei,ej,m,n,train_rows,train_cols,predict_rows,predict_co
     all_ranges[i] = seeds[start:min(start+bs-1,N)]
   end
   for i = 1:np
-    t =  X0[:,all_ranges[i]]
-    sendto(i,X = t)
+    t =  X0t[all_ranges[i],:]
+    sendto(i,Xt = t)
   end
-  X0 = 0
+  X0t = 0
   gc()
   A = zeros(Float64,nrows*ncols,K-1)
   #@show "start"
   for k = 1:K
     @show k
     #@show size(X),size(F)
-    @time @everywhere X = F * X
+    @time @everywhere Xt = Xt * Ft
     k == 1 && continue
-    Xh = zeros(G.m,G.n)
+    Xht = zeros(G.m,G.n)
     for i = 1:np
-      Xi = getfrom(i,:X)
+      Xti = getfrom(i,:Xt)
       #@show size(Xh[:,all_ranges[i]])
       #@show size(Xi[predict_rows,:])
-      @time Xh[:,all_ranges[i]] = Xi
-      Xi = 0
+      @time Xht[all_ranges[i],:] = Xti
+      Xti = 0
       gc()
     end
-    ii,jj,vv = findnz(Xh[predict_rows,predict_cols])
-    @show sum(isnan(vv))
+    if rev_flag == false
+      ii,jj,vv = findnz(Xht[predict_rows,predict_cols])
+      @show length(vv)
+    else
+      ii,jj,vv = findnz(Xht[predict_cols,predict_rows]')
+      @show length(vv)
+    end
     rowids = ii + (jj - 1)*(nrows)
     A[rowids,k-1] = vv
-    Xh = 0
+    Xht = 0
     gc()
   end
   Xa = A * alpha
@@ -250,6 +190,7 @@ function get_diff_matrix(G,diff_type,rho)
     F = G / rho
   elseif diff_type == 2
     F = G * Dinv
+    #F = colnormout(G)
   elseif diff_type == 3
     if rho <= 0
       rho = maximum(abs(eigs(sparse(L),which = :LM, ritzvec = false)[1]))
@@ -265,4 +206,129 @@ function get_diff_matrix(G,diff_type,rho)
   end
   #@show "return"
   return F
+end
+
+function start_diffusion(np,G,train_rows,train_cols,predict_rows,predict_cols,
+                         K,S,diff_type,ratio,rho,seeds,sampling_type,which_run,
+                         max_num,max_pos,lower_bound,rev_flag)
+  all_alpha = zeros(Float64,K-1,S)
+  #@show nnz(G)
+  for s = 1:S
+    positions = Array(Array{Int64},length(train_rows))
+    Gf = copy(G)
+    #nvalid = 0
+    b = []
+    #@show nnz(Gf)
+    for i = 1:length(train_rows)
+      Rf,Rv = splitRT(round(Int64,G[train_rows[i],train_cols[i]]),ratio)
+      #@show nnz(Rf)
+      #@show train_rows[i],train_cols[i]
+      Gf[train_rows[i],train_cols[i]] = Rf
+      Gf[train_cols[i],train_rows[i]] = Rf'
+      b = vcat(b,reshape(Rv,prod(size(Rv)),1))
+      #pv,~ = findnz(Rv[:])
+      #positions[i] = pv
+      #nvalid += length(pv)
+    end
+    ii,jj,vv = findnz(Gf)
+    Gf = sparse(ii,jj,vv,G.m,G.n)
+    #@show nnz(Gf)
+    #return Gf,Rf,Rv
+    b = SparseMatrixCSC{Float64,Int64}(b)
+    @show s
+    #@show nnz(b)
+    #@show nnz(Gf)
+    F = get_diff_matrix(Gf,diff_type,rho)
+    #F = colnormout(Gf)
+    #@show nnz(F)
+    #@show nnz(colnormout(Gf))
+    Ft = F'
+    @eval @everywhere Ft = $Ft
+    Gf,F = 0,0
+    gc()
+    X0 = sparse(seeds,seeds,1.0,G.m,G.n)
+    #@show nnz(X0)
+    X0 = full(X0)
+    X0t = X0'
+    X0 = 0
+    gc()
+    N = length(seeds)
+    bs = ceil(Int64,N/np)
+    nblocks = ceil(Int64,N/bs)
+
+    all_ranges = Array(Array{Int64},nblocks)
+    for i = 1:nblocks
+      start = 1 + (i-1)*bs
+      all_ranges[i] = seeds[start:min(start+bs-1,N)]
+    end
+    for i = 1:np
+      t =  X0t[all_ranges[i],:]
+      sendto(i,Xt = t)
+    end
+    #X0t = 0
+    #gc()
+    Arows = zeros(Int64,length(train_rows)+1)
+    for i = 2:(length(train_rows)+1)
+      #Arows[i] = Arows[i - 1] + length(positions[i - 1])
+      Arows[i] = Arows[i - 1] + length(train_rows[i-1])*length(train_cols[i-1])
+    end
+    A = zeros(Float64,Arows[length(Arows)],K-1)
+    #A = spzeros(Float64,length(b),K-1)
+    #@show "start"
+    for k = 1:K
+      @show k
+      #@show size(X),size(F)
+      @time @everywhere Xt = Xt * Ft
+      k == 1 && continue
+      Xht = zeros(G.m,G.n)
+      for i = 1:np
+        Xti = getfrom(i,:Xt)
+        #@show size(Xh[:,all_ranges[i]])
+        #@show size(Xi[predict_rows,:])
+        @time Xht[all_ranges[i],:] = Xti
+        Xti = 0
+        gc()
+      end
+      for i = 1:length(train_rows)
+        if rev_flag == false
+          temp = Xht[train_rows[i],train_cols[i]]
+          ii,jj,vv = findnz(temp)
+          @show length(vv)
+        else
+          temp = Xht[train_cols[i],train_rows[i]]'
+          ii,jj,vv = findnz(temp)
+          @show length(vv)
+        end
+        rowids = ii+(jj-1)*size(temp,1)+Arows[i]
+        A[rowids,k-1] = vv
+        ii,jj,vv,rowids,temp = 0,0,0,0,0
+        gc()
+      end
+      Xht = 0
+      gc()
+    end
+    @eval @everywhere Xt,Ft = 0,0
+    @everywhere gc()
+    Qa,Ra = qr(A)
+    A = 0
+    gc()
+    alpha = Variable(size(Ra,2))
+    print("start solving Least Sqaure\n")
+    @show Ra
+    @show size(Qa),size(Ra),size(b)
+    if which_run == 1
+      problem = minimize(norm2(Ra*alpha - Qa'*b),alpha >= lower_bound, sum(alpha) == 1)
+    else
+      problem = minimize(norm2(Ra*alpha - Qa'*b),alpha[max_pos] == max_num,
+      alpha[setdiff(round(Int64,linspace(1,size(Ra,2),size(Ra,2))),max_pos)] >= 1/(K-1)^3,
+      sum(alpha) - max_num <= 1)
+    end
+    #solve!(problem, GurobiSolver())
+    solve!(problem,ECOSSolver())
+    Qa,Ra,b = 0,0,0
+    gc()
+    all_alpha[:,s] = alpha.value
+    @show alpha.value
+  end
+  return all_alpha
 end
