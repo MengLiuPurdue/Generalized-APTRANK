@@ -17,8 +17,9 @@
 # ratio        - the split ratio between fiiting set and validation set, default is 0.8
 # rho          - a parameter used to control the diffusion process, rho > 0, if a
 #                rho <= 0 is given, it will be replaced by the spectral radius
-# seeds        - seed positions, where the diffusion starts, default is the same as predict_cols
 # sampling_type- 1 for randomly sampling using ratio, 2 for S-fold cross validation, default is 1
+# lower_bound  - lower bound on alpha, default is 1/(K-1)^2
+# method       - use mean or median to get the final alpha, default is mean
 #
 #
 # Output:
@@ -37,15 +38,15 @@ include("colnormout.jl")
 
 function general_APTRANK(ei,ej,v,m,n,train_rows,train_cols,predict_rows,predict_cols;
                          K = 8,S = 5,diff_type = 1,ratio = 0.8,rho = 0.0,sampling_type = 1,
-                         second_run = 0,lower_bound = 0.0,method = "mean")
+                         second_run = 0,lower_bound = 1/(K-1)^2,method = "mean")
 
   nrows = length(predict_rows)
   ncols = length(predict_cols)
   G = sparse(ei,ej,v,m,n)
-  #if !issymmetric(G)
-    #error("The input must be symmetric.")
-  #end
-  #print("symmetric check success!\n")
+  if !issymmetric(G)
+    error("The input must be symmetric.")
+  end
+  print("symmetric check success!\n")
   if lower_bound > 1/(K-1)
     error("lower bound can't be larger than 1/(K-1).")
   end
