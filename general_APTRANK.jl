@@ -214,27 +214,65 @@ function start_diffusion(np,G,train_rows,train_cols,predict_rows,predict_cols,
                          max_num,max_pos,lower_bound,rev_flag)
   all_alpha = zeros(Float64,K-1,S)
   #@show nnz(G)
+  if sampling_type == 2
+    r = Array(Array{Int64},length(train_rows))
+    quo = zeros(Int64,length(train_rows))
+    res = zeros(Int64,length(train_rows))
+    counter = zeros(Int64,length(train_rows))
+  end
   for s = 1:S
-    positions = Array(Array{Int64},length(train_rows))
-    Gf = copy(G)
-    #nvalid = 0
-    b = []
-    #@show nnz(Gf)
-    for i = 1:length(train_rows)
-      Rf,Rv = splitRT(round(Int64,G[train_rows[i],train_cols[i]]),ratio)
-      #@show nnz(Rf)
-      #@show train_rows[i],train_cols[i]
-      Gf[train_rows[i],train_cols[i]] = Rf
-      Gf[train_cols[i],train_rows[i]] = Rf'
-      b = vcat(b,reshape(Rv,prod(size(Rv)),1))
-      #pv,~ = findnz(Rv[:])
-      #positions[i] = pv
-      #nvalid += length(pv)
+    if sampling_type == 1
+      positions = Array(Array{Int64},length(train_rows))
+      Gf = copy(G)
+      #nvalid = 0
+      b = []
+      #@show nnz(Gf)
+      for i = 1:length(train_rows)
+        Rf,Rv = splitRT(round(Int64,G[train_rows[i],train_cols[i]]),ratio)
+        #@show nnz(Rf)
+        #@show train_rows[i],train_cols[i]
+        Gf[train_rows[i],train_cols[i]] = Rf
+        Gf[train_cols[i],train_rows[i]] = Rf'
+        b = vcat(b,reshape(Rv,prod(size(Rv)),1))
+        #pv,~ = findnz(Rv[:])
+        #positions[i] = pv
+        #nvalid += length(pv)
+      end
+    elseif sampling_type == 2
+      if s == 1
+        for i = 1:length(train_rows)
+          ii,jj,vv = findnz(G[train_rows[i],train_cols[i]])
+          r[i] = randperm(length(vv))
+          quo[i] = floor(Int64,length(vv) / S)
+          res[i] = length(vv) % S
+          counter[i] = 0
+        end
+      end
+      Gf = copy(G)
+      b = []
+      for i = 1:length(train_rows)
+        if s <= res[i]
+          vset = (r[i])[(counter[i]+1):(counter[i]+1+quo[i])]
+          fset = setdiff(r[i],vset)
+          counter[i] += (1+quo[i])
+        else
+          vset = (r[i])[(counter[i]+1):(counter[i]+quo[i])]
+          fset = setdiff(r[i],vset)
+          counter[i] += quo[i]
+        end
+        ii,jj,vv = findnz(G[train_rows[i],train_cols[i]])
+        Rf = sparse(ii[fset],jj[fset],vv[fset],length(train_rows[i]),length(train_cols[i]))
+        Rv = sparse(ii[vset],jj[vset],vv[vset],length(train_rows[i]),length(train_cols[i]))
+        Gf[train_rows[i],train_cols[i]] = Rf
+        Gf[train_cols[i],train_rows[i]] = Rf'
+        b = vcat(b,reshape(Rv,prod(size(Rv)),1))
+      end
+    else
+      error("sampling type must be 1 or 2.")
     end
-    ii,jj,vv = findnz(Gf)
-    Gf = sparse(ii,jj,vv,G.m,G.n)
     #@show nnz(Gf)
     #return Gf,Rf,Rv
+    dropzeros!(Gf)
     b = SparseMatrixCSC{Float64,Int64}(b)
     @show s
     #@show nnz(b)
