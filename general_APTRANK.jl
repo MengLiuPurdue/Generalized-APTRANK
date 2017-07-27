@@ -71,9 +71,9 @@ function general_APTRANK(ei,ej,v,m,n,train_rows,train_cols,predict_rows,predict_
     rev_flag = false
   end
   seeds = Vector{Int64}(seeds)
-  all_alpha = start_diffusion(np,G,train_rows,train_cols,predict_rows,predict_cols,
-                               K,S,diff_type,ratio,rho,seeds,sampling_type,which_run,
-                               0,0,lower_bound,rev_flag)
+  all_alpha = start_diffusion(np,G,train_rows,train_cols,K,S,diff_type,ratio,
+                              rho,seeds,sampling_type,which_run,0,0,lower_bound,
+                              rev_flag)
   all_alpha = Array{Float64}(all_alpha)
   if method == "mean"
     alpha = mean(all_alpha,2)
@@ -87,9 +87,9 @@ function general_APTRANK(ei,ej,v,m,n,train_rows,train_cols,predict_rows,predict_
     (max_num,max_pos) = findmax(alpha)
     max_num = max_num / 2
     which_run = 2
-    all_alpha = start_diffusion(np,G,train_rows,train_cols,predict_rows,predict_cols,
-                                 K,S,diff_type,ratio,rho,seeds,sampling_type,which_run,
-                                 max_num,max_pos,lower_bound,rev_flag)
+    all_alpha = start_diffusion(np,G,train_rows,train_cols,K,S,diff_type,ratio,
+                                rho,seeds,sampling_type,which_run,max_num,max_pos,
+                                lower_bound,rev_flag)
     all_alpha = Array{Float64}(all_alpha)
     if method == "mean"
       alpha = mean(all_alpha,2)
@@ -103,13 +103,7 @@ function general_APTRANK(ei,ej,v,m,n,train_rows,train_cols,predict_rows,predict_
   F = get_diff_matrix(G,diff_type,rho)
   Ft = F'
   @eval @everywhere Ft = $Ft
-  if length(predict_rows) < length(predict_cols)
-    seeds = predict_rows
-    rev_flag = false
-  else
-    seeds = predict_cols
-    rev_flag = true
-  end
+  seeds = vcat(predict_rows,predict_cols)
   seeds = Vector{Int64}(seeds)
   X0 = sparse(seeds,seeds,1.0,G.m,G.n)
   X0 = full(X0)
@@ -132,6 +126,7 @@ function general_APTRANK(ei,ej,v,m,n,train_rows,train_cols,predict_rows,predict_
   X0t = 0
   gc()
   A = zeros(Float64,nrows*ncols,K-1)
+  A_rev = zeros(Float64,nrows*ncols,K-1)
   #@show "start"
   for k = 1:K
     @show k
@@ -147,19 +142,20 @@ function general_APTRANK(ei,ej,v,m,n,train_rows,train_cols,predict_rows,predict_
       Xti = 0
       gc()
     end
-    if rev_flag == false
-      ii,jj,vv = findnz(Xht[predict_rows,predict_cols])
-      @show length(vv)
-    else
-      ii,jj,vv = findnz(Xht[predict_cols,predict_rows]')
-      @show length(vv)
-    end
+    ii,jj,vv = findnz(Xht[predict_rows,predict_cols])
+    @show length(vv)
     rowids = ii + (jj - 1)*(nrows)
     A[rowids,k-1] = vv
+    ii,jj,vv = findnz(Xht[predict_cols,predict_rows]')
+    @show length(vv)
+    rowids = ii + (jj - 1)*(nrows)
+    A_rev[rowids,k-1] = vv
     Xht = 0
     gc()
   end
   Xa = A * alpha
+  Xa_rev = A_rev * alpha
+  Xa = maximum(hcat(Xa,Xa_rev),2)
   #@show "reshape"
   Xa = reshape(Xa,nrows,ncols)
   @show alpha
@@ -209,9 +205,8 @@ function get_diff_matrix(G,diff_type,rho)
   return F
 end
 
-function start_diffusion(np,G,train_rows,train_cols,predict_rows,predict_cols,
-                         K,S,diff_type,ratio,rho,seeds,sampling_type,which_run,
-                         max_num,max_pos,lower_bound,rev_flag)
+function start_diffusion(np,G,train_rows,train_cols,K,S,diff_type,ratio,rho,seeds,
+                         sampling_type,which_run,max_num,max_pos,lower_bound,rev_flag)
   all_alpha = zeros(Float64,K-1,S)
   #@show nnz(G)
   if sampling_type == 2
