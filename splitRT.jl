@@ -1,4 +1,4 @@
-function splitRT(R::SparseMatrixCSC{Int64,Int64},t::Float64)
+function splitRT{T<:Real}(R::SparseMatrixCSC{T,Int64},t::Float64)
     # R is a sparse matrix and t is a value in (0,1)
     # # TODO: error checking R must be sparse, t must be between (0,1)
     # # TODO: add types

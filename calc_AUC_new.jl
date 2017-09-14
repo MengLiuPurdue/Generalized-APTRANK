@@ -6,7 +6,7 @@ using PyCall
 function calc_AUC_new(Rtest,Xa)
   Rtest = Rtest[:]
   Xa = Xa[:]
-  minNonZero = minimum(abs(Xa[find(Xa)]))
+  minNonZero = minimum(abs.(Xa[find(Xa)]))
   Xa = Xa / minNonZero
   @show length(Xa)
   @show length(find(Xa))

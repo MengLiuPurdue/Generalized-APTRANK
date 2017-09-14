@@ -29,6 +29,13 @@ This is a generalized APTRANK based on [Jiang, Biaobin, et al. "AptRank: An Adap
 * Xa            - the predicted matrix, zero rows or columns in the original graph will remain zero.
 * alpha         - the final parameters of APTRANK
 * all_alpha     - records of alphas in each independent experiment
+
+## Example
+For a quick sample run:
+
+```
+include("test.jl")
+```
  
 
 
