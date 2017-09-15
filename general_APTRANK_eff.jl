@@ -233,7 +233,7 @@ function start_diffusion(np,G,train_rows,train_cols,K,S,diff_type,ratio,rho,seed
       Gf = copy(G)
       #nvalid = 0
       # neltsG = prod(size(G))
-      b = spzeros(sum(length.(train_cols).*length.(train_rows)))
+      b = spzeros(sum(collect(length.(train_cols)).*collect(length.(train_rows))))
       # b = spzeros(eltype(G),length(train_rows)*neltsG)
       bid = 1
       #@show nnz(Gf)
@@ -351,12 +351,13 @@ function start_diffusion(np,G,train_rows,train_cols,K,S,diff_type,ratio,rho,seed
           # temp = Xht[train_rows[i],train_cols[i]]
           # ii,jj,vv = findnz(temp)
           # @show length(vv)
-          A[:,k-1] = Xht[train_rows[i],train_cols[i]][:]
+          @show (Arows[i]+1):Arows[i+1]
+          A[(Arows[i]+1):Arows[i+1],k-1] = Xht[train_rows[i],train_cols[i]][:]
         else
           # temp = Xht[train_cols[i],train_rows[i]]
           # jj,ii,vv = findnz(temp)
           # @show length(vv)
-          A[:,k-1] = Xht[train_cols[i],train_rows[i]]'[:]
+          A[(Arows[i]+1):Arows[i+1],k-1] = Xht[train_cols[i],train_rows[i]]'[:]
         end
         # rowids = ii+(jj-1)*size(temp,1)+Arows[i]
         # A[rowids,k-1] = vv
