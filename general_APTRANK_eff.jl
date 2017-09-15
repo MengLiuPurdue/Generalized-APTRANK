@@ -351,7 +351,6 @@ function start_diffusion(np,G,train_rows,train_cols,K,S,diff_type,ratio,rho,seed
           # temp = Xht[train_rows[i],train_cols[i]]
           # ii,jj,vv = findnz(temp)
           # @show length(vv)
-          @show (Arows[i]+1):Arows[i+1]
           A[(Arows[i]+1):Arows[i+1],k-1] = Xht[train_rows[i],train_cols[i]][:]
         else
           # temp = Xht[train_cols[i],train_rows[i]]
