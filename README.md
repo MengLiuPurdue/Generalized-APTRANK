@@ -1,3 +1,5 @@
+[![Binder](http://mybinder.org/badge.svg)](http://beta.mybinder.org/v2/gh/MengLiuPurdue/Generalized-APTRANK/master)
+
 ## Intro
 This is a generalized APTRANK based on [Jiang, Biaobin, et al. "AptRank: An Adaptive PageRank Model for Protein Function Prediction on Bi-relational Graphs." arXiv preprint arXiv:1601.05506 (2016).](https://arxiv.org/abs/1601.05506)
 
