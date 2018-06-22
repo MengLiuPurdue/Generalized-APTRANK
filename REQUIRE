@@ -1,2 +1,7 @@
 PyPlot
 MatrixNetworks
+SCS
+ECOS
+Convex
+StatsBase
+MLBase
